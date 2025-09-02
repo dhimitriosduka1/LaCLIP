@@ -13,20 +13,23 @@ from collections import OrderedDict
 import models
 from tokenizer import SimpleTokenizer
 
+
 def get_model(model):
-    if isinstance(model, torch.nn.DataParallel) \
-      or isinstance(model, torch.nn.parallel.DistributedDataParallel):
+    if isinstance(model, torch.nn.DataParallel) or isinstance(
+        model, torch.nn.parallel.DistributedDataParallel
+    ):
         return model.module
     else:
         return model
 
+
 def main(args):
     ckpt_path = args.ckpt_path
-    ckpt = torch.load(ckpt_path, map_location='cpu')
+    ckpt = torch.load(ckpt_path, map_location="cpu")
 
     state_dict = OrderedDict()
-    for k, v in ckpt['state_dict'].items():
-        state_dict[k.replace('module.', '')] = v
+    for k, v in ckpt["state_dict"].items():
+        state_dict[k.replace("module.", "")] = v
 
     print("creating model: {}".format(args.model))
     print(f"loading checkpoint '{args.ckpt_path}")
@@ -38,26 +41,33 @@ def main(args):
 
     cudnn.benchmark = True
 
-    with open('imagenet_labels.json') as f:
+    with open("imagenet_labels.json") as f:
         labels = json.load(f)
 
     # Data loading code
     print("... creating dataset")
     tokenizer = SimpleTokenizer()
-    val_transform = transforms.Compose([
+    val_transform = transforms.Compose(
+        [
             transforms.Resize(224),
             transforms.CenterCrop(224),
-            lambda x: x.convert('RGB'),
+            lambda x: x.convert("RGB"),
             transforms.ToTensor(),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                                 std=[0.229, 0.224, 0.225])
-        ])
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+        ]
+    )
 
-
-    val_dataset = datasets.ImageFolder(os.path.join(args.imagenet_root, 'val'), transform=val_transform)
+    val_dataset = datasets.ImageFolder(
+        os.path.join(args.imagenet_root, "val"), transform=val_transform
+    )
     val_loader = torch.utils.data.DataLoader(
-        val_dataset, batch_size=args.batch_size, shuffle=False,
-        num_workers=args.workers, pin_memory=True, drop_last=False)
+        val_dataset,
+        batch_size=args.batch_size,
+        shuffle=False,
+        num_workers=args.workers,
+        pin_memory=True,
+        drop_last=False,
+    )
 
     templates = [
         "itap of a {}.",
@@ -66,11 +76,11 @@ def main(args):
         "a photo of the large {}.",
         "a {} in a video game.",
         "art of the {}.",
-        "a photo of the small {}."
+        "a photo of the small {}.",
     ]
 
     acc = validate_zeroshot(val_loader, templates, labels, model, tokenizer)
-    print(f'ImageNet zero-shot accuracy: {acc}')
+    print(f"ImageNet zero-shot accuracy: {acc}")
 
 
 def validate_zeroshot(val_loader, templates, labels, model, tokenizer):
@@ -79,7 +89,7 @@ def validate_zeroshot(val_loader, templates, labels, model, tokenizer):
     total_top1 = 0
     total_images = 0
 
-    print('... getting classifier')
+    print("... getting classifier")
     with torch.no_grad():
         text_features = []
         for label in labels:
@@ -90,9 +100,13 @@ def validate_zeroshot(val_loader, templates, labels, model, tokenizer):
             texts = tokenizer(texts).cuda(non_blocking=True)
             texts = texts.view(-1, 77).contiguous()
             class_embeddings = get_model(model).encode_text(texts)
-            class_embeddings = class_embeddings / class_embeddings.norm(dim=-1, keepdim=True)
+            class_embeddings = class_embeddings / class_embeddings.norm(
+                dim=-1, keepdim=True
+            )
             class_embeddings = class_embeddings.mean(dim=0)
-            class_embeddings = class_embeddings / class_embeddings.norm(dim=-1, keepdim=True)
+            class_embeddings = class_embeddings / class_embeddings.norm(
+                dim=-1, keepdim=True
+            )
             text_features.append(class_embeddings)
         text_features = torch.stack(text_features, dim=0)
 
@@ -115,13 +129,26 @@ def validate_zeroshot(val_loader, templates, labels, model, tokenizer):
     return 100 * total_top1 / total_images
 
 
-
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='ImageNet zero-shot evaluations', add_help=False)
-    parser.add_argument('--imagenet-root', default='data/imagenet', type=str, help='path to imagenet dataset')
-    parser.add_argument('--ckpt-path', default='checkpoints/cc12m_laclip.ckpt', type=str, help='model to test')
-    parser.add_argument('--batch-size', default=256, type=int, help='batch_size')
-    parser.add_argument('--model', default='CLIP_VITB16', type=str, help='model architecture')
-    parser.add_argument('-j', '--workers', default=10, type=int)
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(
+        description="ImageNet zero-shot evaluations", add_help=False
+    )
+    parser.add_argument(
+        "--imagenet-root",
+        default="data/imagenet",
+        type=str,
+        help="path to imagenet dataset",
+    )
+    parser.add_argument(
+        "--ckpt-path",
+        default="checkpoints/cc12m_laclip.ckpt",
+        type=str,
+        help="model to test",
+    )
+    parser.add_argument("--batch-size", default=256, type=int, help="batch_size")
+    parser.add_argument(
+        "--model", default="CLIP_VITB16", type=str, help="model architecture"
+    )
+    parser.add_argument("-j", "--workers", default=10, type=int)
     args = parser.parse_args()
     main(args)

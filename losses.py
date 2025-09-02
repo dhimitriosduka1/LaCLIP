@@ -13,9 +13,9 @@ class CLIPLoss(nn.Module):
         self.last_local_batch_size = None
 
     def forward(self, outputs):
-        image_embed = outputs['image_embed']
-        text_embed = outputs['text_embed']
-        logit_scale = outputs['logit_scale']
+        image_embed = outputs["image_embed"]
+        text_embed = outputs["text_embed"]
+        logit_scale = outputs["logit_scale"]
         local_batch_size = image_embed.size(0)
 
         if local_batch_size != self.last_local_batch_size:
@@ -36,8 +36,10 @@ class CLIPLoss(nn.Module):
         logits_per_image = logit_scale * image_embed @ text_embed_all.t()
         logits_per_text = logit_scale * text_embed @ image_embed_all.t()
 
-        loss = (F.cross_entropy(logits_per_image, self.labels) + \
-            F.cross_entropy(logits_per_text, self.labels)) / 2
+        loss = (
+            F.cross_entropy(logits_per_image, self.labels)
+            + F.cross_entropy(logits_per_text, self.labels)
+        ) / 2
 
         # compute accuracy
         with torch.no_grad():
@@ -45,5 +47,4 @@ class CLIPLoss(nn.Module):
             correct = pred.eq(self.labels).sum()
             acc = 100 * correct / local_batch_size
 
-        return {'loss': loss, 'clip_loss': loss, 'clip_acc': acc}
-
+        return {"loss": loss, "clip_loss": loss, "clip_acc": acc}
