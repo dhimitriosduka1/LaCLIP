@@ -192,6 +192,7 @@ def get_csv_dataset(args, preprocess_fn, is_train, tokenizer=None, aug_text=Fals
 
     return DataInfo(dataloader, sampler)
 
+
 # ================================= STUFF FOR WEBDATASET ===================================
 
 _SHARD_SHUFFLE_SIZE = 2000
@@ -211,7 +212,6 @@ def with_additional_augmentations(
         image = sample["image"]
         out["image1"] = preprocess_img(image)
         out["image2"] = augment(image)
-        out["image3"] = augment(image)
 
         text = sample["text"]
         random_text = random.sample(rephrased_captions[key]["paraphrases"], 1)[0]
@@ -325,7 +325,7 @@ def get_wds_dataset(
                 )
             ),
             # wds.to_tuple("image", "text"),
-            wds.to_tuple("image1", "text1", "image2", "text2", "image3"),
+            wds.to_tuple("image1", "text1", "image2", "text2"),
             wds.batched(args.batch_size, partial=not is_train),
         ]
     )
@@ -624,11 +624,18 @@ def group_by_keys_nothrow(
 
 
 def get_data(args, preprocess_fns, tokenizer=None):
-    preprocess_train, preprocess_val = preprocess_fns
+    preprocess_train, _ = preprocess_fns
     data = {
-        "train": get_csv_dataset(
-            args, preprocess_train, is_train=True, tokenizer=tokenizer
+        "train": get_wds_dataset(
+            args=args,
+            preprocess_img=preprocess_train,
+            augment=preprocess_train,
+            is_train=True,
+            tokenizer=tokenizer,
         )
+        # "train": get_csv_dataset(
+        #     args, preprocess_train, is_train=True, tokenizer=tokenizer
+        # )
     }
 
     return data
