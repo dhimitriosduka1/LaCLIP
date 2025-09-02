@@ -12,49 +12,70 @@ from tqdm import tqdm
 
 
 class CsvDatasetAugCap(Dataset):
-    def __init__(self, input_filename, transforms, tokenizer=None, root=None, augmented_caption_filelist=None):
-        logging.debug(f'Loading csv data from {input_filename}.')
+    def __init__(
+        self,
+        input_filename,
+        transforms,
+        tokenizer=None,
+        root=None,
+        augmented_caption_filelist=None,
+    ):
+        logging.debug(f"Loading csv data from {input_filename}.")
         self.images = []
         self.captions = []
         self.root = root
-        assert input_filename.endswith('.csv')
-        assert augmented_caption_filelist is not None, 'augmented_caption_filelist is None, use csvdataset instead'
+        assert input_filename.endswith(".csv")
+        assert (
+            augmented_caption_filelist is not None
+        ), "augmented_caption_filelist is None, use csvdataset instead"
 
         num_augcap = len(augmented_caption_filelist)
         augmented_captions = []
         file_length = []
         for f in augmented_caption_filelist:
-            with open(f, 'r') as file:
+            with open(f, "r") as file:
                 cur_captions = file.readlines()
                 file_length.append(len(cur_captions))
                 augmented_captions.append(cur_captions)
-        assert len(augmented_captions) == num_augcap, 'number of augmented captions is not equal to num_augcap'
+        assert (
+            len(augmented_captions) == num_augcap
+        ), "number of augmented captions is not equal to num_augcap"
 
         for i in range(num_augcap):
-            assert file_length[i] == file_length[0], 'number of captions in each file is not the same'
+            assert (
+                file_length[i] == file_length[0]
+            ), "number of captions in each file is not the same"
         num_samples = file_length[0]
 
-        with open(input_filename, 'r') as csv_file:
+        with open(input_filename, "r") as csv_file:
             csv_reader = csv.reader(csv_file)
             row_index = 0
             for row in tqdm(csv_reader):
                 image = row[0]
                 prompt = row[1]
-                if image.endswith(('.png', '.jpg', '.jpeg')):
+                if image.endswith((".png", ".jpg", ".jpeg")):
                     image_path = os.path.join(self.root, image)
                     self.images.append(image_path)
 
                     if row_index < num_samples:
                         self.captions.append([prompt])
                         for augcap_idx in range(num_augcap):
-                            self.captions[row_index].append(augmented_captions[augcap_idx][row_index].replace('\n',''))
-                        assert len(self.captions[row_index]) == num_augcap + 1, 'number of captions is not equal to num_augcap + 1'
+                            self.captions[row_index].append(
+                                augmented_captions[augcap_idx][row_index].replace(
+                                    "\n", ""
+                                )
+                            )
+                        assert (
+                            len(self.captions[row_index]) == num_augcap + 1
+                        ), "number of captions is not equal to num_augcap + 1"
                     row_index += 1
-            assert row_index % num_samples == 0, 'number of samples in csv is not equal to num_samples in new caption'
+            assert (
+                row_index % num_samples == 0
+            ), "number of samples in csv is not equal to num_samples in new caption"
 
         self.num_samples = num_samples
         self.transforms = transforms
-        logging.debug('Done loading data.')
+        logging.debug("Done loading data.")
 
         self.tokenizer = tokenizer
 
@@ -63,9 +84,9 @@ class CsvDatasetAugCap(Dataset):
 
     def __getitem__(self, idx):
         images = self.transforms(Image.open(str(self.images[idx])))
-        caption_list = self.captions[idx%self.num_samples]
+        caption_list = self.captions[idx % self.num_samples]
         caption = random.choice(caption_list)
-        if len(caption.split(' ')) < 2:
+        if len(caption.split(" ")) < 2:
             caption = caption_list[0]
         texts = caption
         texts = self.tokenizer(str(texts))
@@ -74,22 +95,22 @@ class CsvDatasetAugCap(Dataset):
 
 class CsvDataset(Dataset):
     def __init__(self, input_filename, transforms, tokenizer=None, root=None):
-        logging.debug(f'Loading csv data from {input_filename}.')
+        logging.debug(f"Loading csv data from {input_filename}.")
         self.images = []
         self.captions = []
         self.root = root
-        assert input_filename.endswith('.csv')
-        with open(input_filename, 'r') as csv_file:
+        assert input_filename.endswith(".csv")
+        with open(input_filename, "r") as csv_file:
             csv_reader = csv.reader(csv_file)
             for row in tqdm(csv_reader):
                 image = row[0]
                 prompt = row[1]
-                if image.endswith(('.png', '.jpg', '.jpeg')):
+                if image.endswith((".png", ".jpg", ".jpeg")):
                     image_path = os.path.join(self.root, image)
                     self.images.append(image_path)
                     self.captions.append(prompt)
         self.transforms = transforms
-        logging.debug('Done loading data.')
+        logging.debug("Done loading data.")
 
         self.tokenizer = tokenizer
 
@@ -127,10 +148,7 @@ def get_csv_dataset(args, preprocess_fn, is_train, tokenizer=None, aug_text=Fals
 
     else:
         dataset = CsvDataset(
-            input_filename,
-            preprocess_fn,
-            root=args.root,
-            tokenizer=tokenizer
+            input_filename, preprocess_fn, root=args.root, tokenizer=tokenizer
         )
 
     num_samples = len(dataset)
@@ -154,6 +172,10 @@ def get_csv_dataset(args, preprocess_fn, is_train, tokenizer=None, aug_text=Fals
 
 def get_data(args, preprocess_fns, tokenizer=None):
     preprocess_train, preprocess_val = preprocess_fns
-    data = {"train": get_csv_dataset(args, preprocess_train, is_train=True, tokenizer=tokenizer)}
+    data = {
+        "train": get_csv_dataset(
+            args, preprocess_train, is_train=True, tokenizer=tokenizer
+        )
+    }
 
     return data
