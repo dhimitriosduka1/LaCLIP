@@ -114,6 +114,21 @@ def get_args_parser():
     parser.add_argument("--dist-backend", default="nccl", type=str)
     parser.add_argument("--seed", default=0, type=int)
     parser.add_argument("--gpu", default=None, type=int, help="GPU id to use.")
+
+    # For TeMo
+    parser.add_argument("--tau-min", type=float, default=0.0, help="tau_min for TeMo")
+
+    parser.add_argument(
+        "--tau-alpha", type=float, default=0.0, help="tau_alpha for TeMo"
+    )
+
+    parser.add_argument(
+        "--initial-temperature",
+        type=float,
+        default=0.07,
+        help="initial temperature for the standard infonce in TeMo",
+    )
+
     return parser
 
 
