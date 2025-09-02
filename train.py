@@ -67,7 +67,7 @@ def get_args_parser():
 
     parser.add_argument(
         "--imagenet-root",
-        default="data/imagenet",
+        default="/ptmp/dduka/databases/imagenet/",
         type=str,
         help="path to imagenet dataset",
     )
