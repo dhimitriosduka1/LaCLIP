@@ -27,6 +27,9 @@ import models
 import losses
 import utils
 
+# Mine imports
+import wandb
+
 
 def get_args_parser():
     parser = argparse.ArgumentParser(description="LaCLIP/CLIP training", add_help=False)
@@ -34,10 +37,23 @@ def get_args_parser():
         "--train-data",
         type=str,
         default=None,
-        help="Path to training csv.",
+        help="Path to file(s) with training data. When using webdataset, multiple datasources can be combined using the `::` separator.",
     )
     parser.add_argument(
-        "--root", type=str, default="./data/", help="Root directory of images."
+        "--train-num-samples",
+        type=int,
+        default=None,
+        help="Number of samples in dataset. Required for webdataset if not available in info file.",
+    )
+    parser.add_argument(
+        "--train-data-upsampling-factors",
+        type=str,
+        default=None,
+        help=(
+            "When using multiple data sources with webdataset and sampling with replacement, this can be used to upsample specific data sources. "
+            "Similar to --train-data, this should be a string with as many numbers as there are data sources, separated by `::` (e.g. 1::2::0.5) "
+            "By default, datapoints are sampled uniformly regardless of the dataset sizes."
+        ),
     )
     # list of filenames for augmented captions
     parser.add_argument(
@@ -284,7 +300,17 @@ def main(args):
     else:
         log_writer = None
 
+    if utils.is_main_process():
+        wandb_id = os.path.split(args.output_dir)[-1]
+        wandb.init(project="laclip", id=wandb_id, config=args, resume="allow")
+
     print(args)
+
+    if args.start_epoch == 0:
+        print("=> performing zsh eval")
+        val_stats = validate_zeroshot(val_loader, model, tokenizer, args)
+        if utils.is_main_process() and args.wandb:
+            wandb.log({**{f"test_{k}": v for k, v in val_stats.items()}})
 
     print("=> beginning training")
     for epoch in range(args.start_epoch, args.epochs):
@@ -330,15 +356,8 @@ def main(args):
             "epoch": epoch,
         }
 
-        # log test stats to log_writer (tensorboard)
-        if log_writer is not None:
-            for k, v in log_stats.items():
-                if k.startswith("test"):
-                    log_writer.add_scalar(k, v, epoch)
-
         if utils.is_main_process():
-            with open(os.path.join(args.output_dir, "log.txt"), "a") as f:
-                f.write(json.dumps(log_stats) + "\n")
+            wandb.log(log_stats)
 
 
 def train(
