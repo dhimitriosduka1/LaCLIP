@@ -279,8 +279,16 @@ def main(args):
     )
 
     data = get_data(args, (train_transform, val_transform), tokenizer=tokenizer)
-    print("dataset size: %d" % data["train"].dataloader.num_samples)
+    train_dataset = data["train"]
+    # Set total_steps
+    num_batches_per_epoch = train_dataset.dataloader.num_batches // args.update_freq
+    args.num_batches_per_epoch = num_batches_per_epoch
+    args.total_steps = args.epochs * num_batches_per_epoch
+    args.train_sz = train_dataset.dataloader.num_samples
+
+    print("dataset size: %d" % num_batches_per_epoch)
     train_loader = data["train"].dataloader
+    train_loader["num_batches"] = num_batches_per_epoch
 
     loader_len = train_loader.num_batches
 
