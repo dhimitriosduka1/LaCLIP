@@ -132,6 +132,7 @@ def get_args_parser():
     parser.add_argument("--gpu", default=None, type=int, help="GPU id to use.")
 
     # For TeMo
+    parser.add_argument("--enable-temo", action="store_true", help="enable TeMo")
     parser.add_argument("--tau-min", type=float, default=0.0, help="tau_min for TeMo")
 
     parser.add_argument(
@@ -170,9 +171,6 @@ def main(args):
         model = torch.nn.parallel.DistributedDataParallel(
             model, device_ids=[args.gpu], bucket_cap_mb=200
         )
-
-    # define loss function (criterion) and optimizer
-    criterion = losses.CLIPLoss().cuda(args.gpu)
 
     p_wd, p_non_wd = [], []
     for n, p in model.named_parameters():
@@ -320,6 +318,14 @@ def main(args):
         if utils.is_main_process() and args.wandb:
             wandb.log({**{f"test_{k}": v for k, v in val_stats.items()}})
 
+    # define loss function (criterion) and optimizer
+    if args.enable_temo:
+        criterion = losses.TeMoLoss(
+            tau_min=args.tau_min, tau_alpha=args.tau_alpha, total_steps=args.total_steps
+        ).cuda(args.gpu)
+    else:
+        criterion = losses.CLIPLoss().cuda(args.gpu)
+
     print("=> beginning training")
     for epoch in range(args.start_epoch, args.epochs):
         if args.distributed:
@@ -408,11 +414,22 @@ def train(
         for k, param_group in enumerate(optimizer.param_groups):
             param_group["lr"] = lr_schedule[it]
 
-        inputs = [tensor.cuda(args.gpu, non_blocking=True) for tensor in inputs]
-
         # compute output
         with amp.autocast(enabled=not args.disable_amp):
-            outputs = model(*inputs)
+            outputs = model(
+                image=inputs[0].cuda(args.gpu, non_blocking=True),
+                text=inputs[1].cuda(args.gpu, non_blocking=True),
+                image_aug=(
+                    inputs[2].cuda(args.gpu, non_blocking=True)
+                    if args.enable_temo
+                    else None
+                ),
+                text_aug=(
+                    inputs[3].cuda(args.gpu, non_blocking=True)
+                    if args.enable_temo
+                    else None
+                ),
+            )
             loss_dict = criterion(outputs)
             loss = loss_dict["loss"]
             loss /= args.update_freq
@@ -444,13 +461,17 @@ def train(
 
         mem.update(torch.cuda.max_memory_allocated() // 1e9)
 
-        # save to log_writer (tensorboard)
-        if log_writer is not None:
-            for k, v in loss_dict.items():
-                log_writer.add_scalar(k, v.item(), it)
-            log_writer.add_scalar("scaler", scaler.get_scale(), it)
-            log_writer.add_scalar("logit", logit_scale, it)
-            log_writer.add_scalar("lr", optimizer.param_groups[0]["lr"], it)
+        if optim_iter % args.print_freq == 0:
+            if utils.is_main_process():
+                wandb.log(
+                    {
+                        **{k: v.item() for k, v in loss_dict.items()},
+                        "scaler": scaler.get_scale(),
+                        "logit": logit_scale,
+                        "lr": optimizer.param_groups[0]["lr"],
+                    }
+                )
+            progress.display(optim_iter)
 
         if optim_iter % args.print_freq == 0:
             progress.display(optim_iter)
