@@ -159,14 +159,19 @@ class CLIP(nn.Module):
 
         return x
 
-    def forward(self, image, text):
+    def forward(self, image, text, image_aug=None, text_aug=None):
         image_embed = self.encode_image(image)
         text_embed = self.encode_text(text)
+
+        image_aug_embed = self.encode_image(image_aug) if image_aug is not None else None
+        text_aug_embed = self.encode_text(text_aug) if text_aug is not None else None
 
         return {
             "image_embed": image_embed,
             "text_embed": text_embed,
-            "logit_scale": self.logit_scale.exp(),
+            "image_aug_embed": image_aug_embed,
+            "text_aug_embed": text_aug_embed,
+            "logit_scale": self.logit_scale.exp()
         }
 
 
