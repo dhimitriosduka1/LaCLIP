@@ -214,7 +214,7 @@ def with_additional_augmentations(
         out["image2"] = augment(image)
 
         text = sample["text"]
-        random_text = random.sample(rephrased_captions[key]["paraphrases"], 1)[0]
+        random_text = random.sample(rephrased_captions[key]["paraphrases"] + [text], 1)[0]
 
         out["text1"] = tokenizer(text)
         out["text2"] = tokenizer(random_text)

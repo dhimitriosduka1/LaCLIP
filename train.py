@@ -56,11 +56,11 @@ def get_args_parser():
         ),
     )
     # list of filenames for augmented captions
-    parser.add_argument(
-        "--augmented_caption_filelist",
-        nargs="+",
-        help="list of augmented caption filenames, seperated by space",
-    )
+    # parser.add_argument(
+    #     "--augmented-caption-filelist",
+    #     nargs="+",
+    #     help="list of augmented caption filenames, seperated by space",
+    # )
     parser.add_argument(
         "--aug-text", action="store_true", help="set to True for LaCLIP"
     )
@@ -154,6 +154,10 @@ best_acc1 = 0
 
 def main(args):
     utils.init_distributed_mode(args)
+
+    assert not (
+        args.enable_temo and args.aug_text
+    ), "Error: both enable_temo and aug_text are True!"
 
     global best_acc1
 
@@ -374,6 +378,45 @@ def main(args):
             wandb.log(log_stats)
 
 
+def get_metric_names(enable_temo):
+    if not enable_temo:
+        return ["loss", "clip_loss", "clip_acc"]
+
+    prefixes = ["i2t/", "t2i/", "i2i/", "t2t/"]
+
+    base_keys = [
+        "loss",
+        "info_nce_loss",
+        "m_info_nce_loss",
+        "m_i2i_loss",
+        "m_t2t_loss",
+        "alpha",
+        "beta",
+    ]
+
+    metrics = [
+        "min_per_sample_temperature",
+        "max_per_sample_temperature",
+        "avg_per_sample_temperature",
+        "median_per_sample_temperature",
+        "quantile_0.5_per_sample_temperature",
+        "positive_samples_min_temperature",
+        "positive_samples_max_temperature",
+        "positive_samples_avg_temperature",
+        "positive_samples_median_temperature",
+        "positive_samples_quantile_0.5_temperature",
+        "negative_samples_min_temperature",
+        "negative_samples_max_temperature",
+        "negative_samples_avg_temperature",
+        "negative_samples_median_temperature",
+        "negative_samples_quantile_0.5_temperature",
+    ]
+
+    return base_keys + [
+        f"{prefix}{metric}" for prefix in prefixes for metric in metrics
+    ]
+
+
 def train(
     train_loader,
     log_writer,
@@ -388,8 +431,7 @@ def train(
     batch_time = AverageMeter("Time", ":6.2f")
     data_time = AverageMeter("Data", ":6.2f")
     mem = AverageMeter("Mem (GB)", ":6.1f")
-    metric_names = ["loss", "clip_loss", "clip_acc"]
-
+    metric_names = get_metric_names(args.enable_temo)
     loader_len = train_loader.num_batches
     iters_per_epoch = loader_len // args.update_freq
     metrics = OrderedDict([(name, AverageMeter(name, ":.2e")) for name in metric_names])
@@ -415,22 +457,38 @@ def train(
             param_group["lr"] = lr_schedule[it]
 
         # compute output
+        image = inputs[0].cuda(args.gpu, non_blocking=True)
+        text = inputs[1].cuda(args.gpu, non_blocking=True)
+
+        if args.aug_text:
+            text = inputs[3].cuda(args.gpu, non_blocking=True)
+
+        image_aug = (
+            inputs[2].cuda(args.gpu, non_blocking=True) if args.enable_temo else None
+        )
+
+        text_aug = (
+            inputs[3].cuda(args.gpu, non_blocking=True) if args.enable_temo else None
+        )
+
         with amp.autocast(enabled=not args.disable_amp):
             outputs = model(
-                image=inputs[0].cuda(args.gpu, non_blocking=True),
-                text=inputs[1].cuda(args.gpu, non_blocking=True),
-                image_aug=(
-                    inputs[2].cuda(args.gpu, non_blocking=True)
-                    if args.enable_temo
-                    else None
-                ),
-                text_aug=(
-                    inputs[3].cuda(args.gpu, non_blocking=True)
-                    if args.enable_temo
-                    else None
-                ),
+                image=image,
+                text=text,
+                image_aug=image_aug,
+                text_aug=text_aug,
             )
-            loss_dict = criterion(outputs)
+            if args.enable_temo:
+                loss_dict = criterion(
+                    image_features=outputs["image_embed"],
+                    text_features=outputs["text_embed"],
+                    image_aug_features=outputs["image_aug_embed"],
+                    text_aug_features=outputs["text_aug_embed"],
+                    logit_scale=args.initial_temperature,
+                    current_step=it,
+                )
+            else:
+                loss_dict = criterion(outputs)
             loss = loss_dict["loss"]
             loss /= args.update_freq
 
@@ -448,9 +506,12 @@ def train(
         scaler.update()
         model.zero_grad(set_to_none=True)
 
-        # clamp logit scale to [0, 100]
-        utils.get_model(model).logit_scale.data.clamp_(0, 4.6052)
-        logit_scale = utils.get_model(model).logit_scale.exp().item()
+        if args.enable_temo:
+            logit_scale = args.initial_temperature
+        else:
+            # clamp logit scale to [0, 100]
+            utils.get_model(model).logit_scale.data.clamp_(0, 4.6052)
+            logit_scale = utils.get_model(model).logit_scale.exp().item()
 
         for k in loss_dict:
             metrics[k].update(loss_dict[k].item(), args.batch_size)
