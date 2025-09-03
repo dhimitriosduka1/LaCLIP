@@ -305,8 +305,6 @@ def main(args):
     if utils.is_main_process() and args.output_dir is not None:
         args.log_dir = os.path.join(args.output_dir, "tb_logs")
         os.makedirs(args.log_dir, exist_ok=True)
-    else:
-        log_writer = None
 
     if utils.is_main_process():
         wandb_id = os.path.split(args.output_dir)[-1]
@@ -337,7 +335,6 @@ def main(args):
         # train for one epoch
         train_stats = train(
             train_loader,
-            log_writer,
             model,
             criterion,
             optimizer,
@@ -417,7 +414,6 @@ def get_metric_names(enable_temo):
 
 def train(
     train_loader,
-    log_writer,
     model,
     criterion,
     optimizer,
