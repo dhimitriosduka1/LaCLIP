@@ -5,7 +5,6 @@ import math
 import os
 import sys
 import time
-from torch.utils.tensorboard import SummaryWriter
 
 
 import numpy as np
@@ -290,7 +289,7 @@ def main(args):
 
     print("dataset size: %d" % num_batches_per_epoch)
     train_loader = data["train"].dataloader
-    train_loader["num_batches"] = num_batches_per_epoch
+    train_loader.num_batches = num_batches_per_epoch
 
     loader_len = train_loader.num_batches
 
@@ -306,7 +305,6 @@ def main(args):
     if utils.is_main_process() and args.output_dir is not None:
         args.log_dir = os.path.join(args.output_dir, "tb_logs")
         os.makedirs(args.log_dir, exist_ok=True)
-        log_writer = SummaryWriter(log_dir=args.log_dir)
     else:
         log_writer = None
 
@@ -319,7 +317,7 @@ def main(args):
     if args.start_epoch == 0:
         print("=> performing zsh eval")
         val_stats = validate_zeroshot(val_loader, model, tokenizer, args)
-        if utils.is_main_process() and args.wandb:
+        if utils.is_main_process():
             wandb.log({**{f"test_{k}": v for k, v in val_stats.items()}})
 
     # define loss function (criterion) and optimizer
